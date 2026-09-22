@@ -33,7 +33,7 @@ if st.button("Process PDFs") and files:
 
     st.dataframe(df)
 
-    output_file = "/mnt/data/PO_Summary.xlsx"
+    output_file = "PO_Summary.xlsx"
     create_excel_report(df, exc_df, output_file)
 
     with open(output_file, "rb") as fp:
