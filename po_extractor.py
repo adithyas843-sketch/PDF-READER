@@ -6,15 +6,16 @@ def extract_po_data(uploaded_file):
     pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
 
     text = ""
+
     for page in pdf:
         text += page.get_text()
-        print("==== PDF TEXT START ====")
-print(text[:3000])
-print("==== PDF TEXT END ====")
 
-    po_no = _search(text, r"PO\s*NUMBER\s*([A-Z0-9\/\-\_]+)")
+    print("==== PDF TEXT START ====")
+    print(text[:3000])
+    print("==== PDF TEXT END ====")
+
+    po_no = _search(text, r"PO\s*NUMBER\s*([A-Z0-9\/\-_]+)")
     po_date = _search(text, r"PO\s*DATE\s*([0-9\.\/\-]+)")
-
     vendor = ""
     vendor_match = re.search(r"M/s\.(.*)", text, re.IGNORECASE)
     if vendor_match:
