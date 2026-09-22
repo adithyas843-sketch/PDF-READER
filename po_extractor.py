@@ -32,10 +32,14 @@ def extract_po_data(uploaded_file):
             po_no = m.group(0)
             break
 
-    m = re.search(r'(\d{2}[./-]\d{2}[./-]\d{4})', text)
-    if m:
-        po_date = m.group(1)
+    m = re.search(
+    r'PO\s*DATE\s*[:\-]?\s*(\d{2}[./-]\d{2}[./-]\d{4})',
+    text,
+    re.I
+)
 
+if m:
+    po_date = m.group(1)
     m = re.search(r'PURCHASE ORDER FOR(.*)', text, re.I)
     if m:
         subject = m.group(1).strip()[:150]
