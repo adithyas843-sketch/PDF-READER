@@ -1,78 +1,48 @@
 
-def extract_po_data(uploaded_file):
-    import fitz
-    import streamlit as st
+import re
+from pdf2image import convert_from_bytes
+import pytesseract
 
-    pdf = fitz.open(
-        stream=uploaded_file.read(),
-        filetype="pdf"
-    )
+def extract_po_data(uploaded_file):
+
+    images = convert_from_bytes(uploaded_file.read(), dpi=300)
 
     text = ""
-
-    for page in pdf:
-        page_text = page.get_text()
-        text += page_text
-
-    st.write("TEXT LENGTH:", len(text))
-
-    if len(text.strip()) == 0:
-        st.error("No text extracted from PDF")
-    else:
-        st.subheader("Extracted PDF Text")
-        st.text(text[:3000])
-
-    po_no = _search(
-        text,
-        r"PO\s*NUMBER\s*([A-Z0-9\/\-\_]+)"
-    )
-
-    po_date = _search(
-        text,
-        r"PO\s*DATE\s*([0-9\.\/\-]+)"
-    )
+    for img in images:
+        text += "\n" + pytesseract.image_to_string(img)
 
     vendor = ""
-    vendor_match = re.search(
-        r"M/s\.(.*)",
-        text,
-        re.IGNORECASE
-    )
-
-    if vendor_match:
-        vendor = vendor_match.group(1).strip()
-
+    po_no = ""
+    po_date = ""
     subject = ""
-    sub_match = re.search(
-        r"SUB:(.*)",
-        text,
-        re.IGNORECASE
-    )
-
-    if sub_match:
-        subject = sub_match.group(1).strip()
-
     amount = ""
-    amount_type = ""
 
-    grand = re.search(
-        r"GRAND\s+TOTAL.*?([\d,]+\.\d+|[\d,]+)",
-        text,
-        re.IGNORECASE | re.DOTALL
-    )
+    m = re.search(r'ANMOL TRADING COMPANY|M/s\.?\s*(.+)', text, re.I)
+    if m:
+        vendor = m.group(0).strip()
 
-    subtotal = re.search(
-        r"SUB\s+TOTAL.*?([\d,]+\.\d+|[\d,]+)",
-        text,
-        re.IGNORECASE | re.DOTALL
-    )
+    po_patterns = [
+        r'GFG/\d{4}-\d{2}/[A-Z&\-]+-\d+',
+        r'PO\s*NUMBER.*?([A-Z0-9/\-]+)'
+    ]
 
-    if grand:
-        amount = grand.group(1)
-        amount_type = "Including GST"
-    elif subtotal:
-        amount = subtotal.group(1)
-        amount_type = "Excluding GST"
+    for p in po_patterns:
+        m = re.search(p, text, re.I)
+        if m:
+            po_no = m.group(0)
+            break
+
+    m = re.search(r'(\d{2}[./-]\d{2}[./-]\d{4})', text)
+    if m:
+        po_date = m.group(1)
+
+    m = re.search(r'PURCHASE ORDER FOR(.*)', text, re.I)
+    if m:
+        subject = m.group(1).strip()[:150]
+
+    amounts = re.findall(r'[\d,]+\.\d{2}|[\d,]+', text)
+    if amounts:
+        amount = max(amounts, key=lambda x: len(x.replace(",","")))
 
     return {
         "Material Vendor": vendor,
@@ -80,5 +50,5 @@ def extract_po_data(uploaded_file):
         "PO No": po_no,
         "Description (Scope of Work in Brief)": subject,
         "Amount Total": amount,
-        "Amount Type": amount_type,
+        "File Name": uploaded_file.name
     }
