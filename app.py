@@ -1,13 +1,8 @@
 
 import streamlit as st
 import pandas as pd
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent))
-
-from modules.po_extractor import extract_po_data
-from modules.excel_exporter import create_excel_report
+from po_extractor import extract_po_data
+from excel_exporter import create_excel_report
 st.set_page_config(page_title="PO Extractor", layout="wide")
 
 st.title("Purchase Order Extractor")
