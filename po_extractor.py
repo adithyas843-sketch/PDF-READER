@@ -22,11 +22,9 @@ def extract_po_data(uploaded_file):
         page_text = pytesseract.image_to_string(img)
         text += "\n" + page_text
 
-    # DEBUG - REMOVE LATER
+    # Debug OCR Text
     with st.expander(f"OCR Text - {uploaded_file.name}"):
-        st.text(text[:10000])
-
-    text_clean = clean_text(text)
+        st.text(text[:15000])
 
     vendor = ""
     po_no = ""
@@ -47,7 +45,7 @@ def extract_po_data(uploaded_file):
         match = re.search(pattern, text, re.IGNORECASE)
 
         if match:
-            vendor = match.group(1).strip()
+            vendor = clean_text(match.group(1))
             break
 
     # --------------------------------------------------
@@ -55,8 +53,10 @@ def extract_po_data(uploaded_file):
     # --------------------------------------------------
 
     po_patterns = [
-        r"GFG/\d{4}-\d{2}/[A-Z&\-]+-\d+",
-        r"PO\s*NUMBER\s*([A-Z0-9/\-&]+)"
+        r"GFG/\d{4}-\d{2}/[A-Z0-9&\-]+-\d+",
+        r"PO\s*NUMBER\s*[:\-]?\s*([A-Z0-9/\-&]+)",
+        r"PONUMBER\s*[:\-]?\s*([A-Z0-9/\-&]+)",
+        r"PO\s*NO\s*[:\-]?\s*([A-Z0-9/\-&]+)"
     ]
 
     for pattern in po_patterns:
@@ -82,6 +82,7 @@ def extract_po_data(uploaded_file):
 
     date_patterns = [
         r"PO\s*DATE\s*[:\-]?\s*(\d{2}[./-]\d{2}[./-]\d{4})",
+        r"PODATE\s*[:\-]?\s*(\d{2}[./-]\d{2}[./-]\d{4})",
         r"(\d{2}[./-]\d{2}[./-]\d{4})"
     ]
 
@@ -103,8 +104,9 @@ def extract_po_data(uploaded_file):
 
     desc_patterns = [
         r"SUB:\s*(.*?)Dear",
-        r"SUB:\s*(.*?)(?:\n|\r)",
-        r"PURCHASE ORDER FOR\s*(.*?)(?:\n|\r)"
+        r"SUB:\s*(.*?)following",
+        r"PURCHASE ORDER FOR(.*?)(?:\n|\r)",
+        r"SUBJECT\s*:\s*(.*?)(?:\n|\r)"
     ]
 
     for pattern in desc_patterns:
@@ -127,7 +129,9 @@ def extract_po_data(uploaded_file):
         r"GRAND\s*TOTAL\s*([\d,]+\.\d{2})",
         r"GRAND\s*TOTAL\s*([\d,]+)",
         r"SUB\s*TOTAL\s*([\d,]+\.\d{2})",
-        r"SUB\s*TOTAL\s*([\d,]+)"
+        r"SUB\s*TOTAL\s*([\d,]+)",
+        r"TOTAL\s*([\d,]+\.\d{2})",
+        r"TOTAL\s*([\d,]+)"
     ]
 
     for pattern in grand_patterns:
