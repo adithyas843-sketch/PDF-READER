@@ -19,97 +19,56 @@ def extract_po_data(uploaded_file):
     text = ""
 
     for img in images:
-        page_text = pytesseract.image_to_string(img)
-        text += "\n" + page_text
+        text += "\n"
+        text += pytesseract.image_to_string(img)
 
-    # Debug OCR Text
+    # Debug OCR text
     with st.expander(f"OCR Text - {uploaded_file.name}"):
         st.text(text[:15000])
 
-    vendor = ""
-    po_no = ""
-    po_date = ""
-    description = ""
-    amount = ""
+    # --------------------------------------------------
+    # Vendor
+    # --------------------------------------------------
 
-    # --------------------------------------------------
-    # VENDOR
-    # --------------------------------------------------
+    vendor = ""
 
     vendor_patterns = [
-        r"M/s\.?\s*([A-Z0-9 &.,\-]+)",
-        r"TO\s*M/s\.?\s*([A-Z0-9 &.,\-]+)"
+        r"M/s\.?\s*([^\n\r]+)",
+        r"M\/s\.?\s*([^\n\r]+)"
     ]
 
     for pattern in vendor_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
 
         if match:
             vendor = clean_text(match.group(1))
             break
 
     # --------------------------------------------------
-    # PO NUMBER
+    # Description
     # --------------------------------------------------
 
-    po_patterns = [
-        r"GFG/\d{4}-\d{2}/[A-Z0-9&\-]+-\d+",
-        r"PO\s*NUMBER\s*[:\-]?\s*([A-Z0-9/\-&]+)",
-        r"PONUMBER\s*[:\-]?\s*([A-Z0-9/\-&]+)",
-        r"PO\s*NO\s*[:\-]?\s*([A-Z0-9/\-&]+)"
+    description = ""
+
+    description_patterns = [
+
+        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+AT\s+GOLDFINCH",
+
+        r"PURCHASE\s+ORDER\s+FOR\s+(.*?)\s+AT\s+GOLDFINCH",
+
+        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+\(",
+
+        r"PURCHASE\s+ORDER\s+FOR\s+(.*?)\s+\(",
+
+        r"SUB:\s*(.*?)\s+AT\s+GOLDFINCH"
     ]
 
-    for pattern in po_patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            if match.groups():
-                po_no = match.group(1)
-            else:
-                po_no = match.group(0)
-
-            break
-
-    # --------------------------------------------------
-    # PO DATE
-    # --------------------------------------------------
-
-    date_patterns = [
-        r"PO\s*DATE\s*[:\-]?\s*(\d{2}[./-]\d{2}[./-]\d{4})",
-        r"PODATE\s*[:\-]?\s*(\d{2}[./-]\d{2}[./-]\d{4})",
-        r"(\d{2}[./-]\d{2}[./-]\d{4})"
-    ]
-
-    for pattern in date_patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-            po_date = match.group(1)
-            break
-
-    # --------------------------------------------------
-    # DESCRIPTION
-    # --------------------------------------------------
-
-    desc_patterns = [
-        r"SUB:\s*(.*?)Dear",
-        r"SUB:\s*(.*?)following",
-        r"PURCHASE ORDER FOR(.*?)(?:\n|\r)",
-        r"SUBJECT\s*:\s*(.*?)(?:\n|\r)"
-    ]
-
-    for pattern in desc_patterns:
+    for pattern in description_patterns:
 
         match = re.search(
             pattern,
@@ -118,57 +77,87 @@ def extract_po_data(uploaded_file):
         )
 
         if match:
-            description = clean_text(match.group(1))
+
+            description = clean_text(
+                match.group(1)
+            )
+
             break
 
     # --------------------------------------------------
-    # GRAND TOTAL
+    # Amount Excluding GST
     # --------------------------------------------------
 
-    grand_patterns = [
-        r"GRAND\s*TOTAL\s*([\d,]+\.\d{2})",
-        r"GRAND\s*TOTAL\s*([\d,]+)",
-        r"SUB\s*TOTAL\s*([\d,]+\.\d{2})",
-        r"SUB\s*TOTAL\s*([\d,]+)",
-        r"TOTAL\s*([\d,]+\.\d{2})",
-        r"TOTAL\s*([\d,]+)"
+    amount = ""
+
+    amount_patterns = [
+
+        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+\.\d{2})",
+
+        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+)",
+
+        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+\.\d{2})",
+
+        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+)",
+
+        r"TOTAL\s*[:\-]?\s*([\d,]+\.\d{2}).{0,100}GST",
+
+        r"TOTAL\s*[:\-]?\s*([\d,]+).{0,100}GST"
     ]
 
-    for pattern in grand_patterns:
+    for pattern in amount_patterns:
 
         match = re.search(
             pattern,
             text,
-            re.IGNORECASE
+            re.IGNORECASE | re.DOTALL
         )
 
         if match:
+
             amount = match.group(1)
             break
 
     # --------------------------------------------------
-    # FALLBACK AMOUNT
+    # Fallback Amount
     # --------------------------------------------------
 
     if amount == "":
 
-        amounts = re.findall(
-            r"\b\d{1,3}(?:,\d{3})+\b",
-            text
-        )
+        lines = text.splitlines()
 
-        if amounts:
-            amount = amounts[-1]
+        for i, line in enumerate(lines):
+
+            if "GST" in line.upper():
+
+                for j in range(max(0, i - 5), i):
+
+                    nums = re.findall(
+                        r"[\d,]+\.\d{2}|[\d,]+",
+                        lines[j]
+                    )
+
+                    if nums:
+
+                        amount = nums[-1]
+                        break
+
+                if amount:
+                    break
 
     # --------------------------------------------------
-    # RETURN
+    # Clean Amount
+    # --------------------------------------------------
+
+    amount = amount.replace(" ", "")
+
+    # --------------------------------------------------
+    # Return
     # --------------------------------------------------
 
     return {
         "Material Vendor": vendor,
-        "PO Date": po_date,
-        "PO No": po_no,
         "Description (Scope of Work in Brief)": description,
-        "Amount Total": amount,
+        "Amount Excl GST": amount,
         "File Name": uploaded_file.name
     }
