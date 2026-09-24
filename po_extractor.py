@@ -13,7 +13,7 @@ def extract_text_from_pdf(uploaded_file):
 
     pdf_bytes = uploaded_file.read()
 
-    # First try direct PDF text extraction
+    # Try direct PDF text extraction first
     try:
         pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
 
@@ -28,7 +28,7 @@ def extract_text_from_pdf(uploaded_file):
     except Exception:
         pass
 
-    # Fallback OCR
+    # OCR fallback
     images = convert_from_bytes(pdf_bytes, dpi=300)
 
     text = ""
@@ -49,11 +49,15 @@ def extract_vendor(text):
 
     for pattern in patterns:
 
-        m = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
 
-        if m:
+        if match:
 
-            vendor = clean_text(m.group(1))
+            vendor = clean_text(match.group(1))
 
             vendor = vendor.replace("PO NUMBER", "")
             vendor = vendor.replace("PO NO", "")
@@ -78,57 +82,56 @@ def extract_description(text):
 
     for pattern in patterns:
 
-        m = re.search(
+        match = re.search(
             pattern,
             text,
             re.IGNORECASE | re.DOTALL
         )
 
-        if m:
-            return clean_text(m.group(1))
+        if match:
+            return clean_text(match.group(1))
 
     return ""
 
 
 def extract_amount(text):
 
-    # Case 1
+    # Show total-related lines for debugging
+    st.write("### TOTAL DEBUG")
+
+    for line in text.splitlines():
+
+        if (
+            "TOTAL" in line.upper()
+            or "GST" in line.upper()
+        ):
+            st.write(line)
+
+    # Convert newlines to spaces
+    text_flat = text.replace("\n", " ")
+
     patterns = [
 
+        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+\.\d{2})",
         r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+)",
 
+        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+\.\d{2})",
         r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+)",
 
+        r"SUBTOTAL\s*[:\-]?\s*([\d,]+\.\d{2})",
         r"SUBTOTAL\s*[:\-]?\s*([\d,]+)"
     ]
 
     for pattern in patterns:
 
-        m = re.search(
+        match = re.search(
             pattern,
-            text,
+            text_flat,
             re.IGNORECASE
         )
 
-        if m:
-            return m.group(1)
-
-    # Case 2
-    lines = text.splitlines()
-
-    for i, line in enumerate(lines):
-
-        if "GST" in line.upper():
-
-            for j in range(i - 1, max(-1, i - 8), -1):
-
-                nums = re.findall(
-                    r"\d[\d,]*",
-                    lines[j]
-                )
-
-                if nums:
-                    return nums[-1]
+        if match:
+            return match.group(1)
 
     return ""
 
@@ -137,9 +140,9 @@ def extract_po_data(uploaded_file):
 
     text = extract_text_from_pdf(uploaded_file)
 
-    with st.expander(f"OCR/Text Output - {uploaded_file.name}"):
+    with st.expander(f"PDF TEXT - {uploaded_file.name}"):
 
-        st.text(text[:10000])
+        st.text(text[:15000])
 
     vendor = extract_vendor(text)
 
