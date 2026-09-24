@@ -1,20 +1,35 @@
 import re
+import fitz
 from pdf2image import convert_from_bytes
 import pytesseract
 import streamlit as st
 
 
 def clean_text(text):
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def extract_po_data(uploaded_file):
+def extract_text_from_pdf(uploaded_file):
 
-    images = convert_from_bytes(
-        uploaded_file.read(),
-        dpi=300
-    )
+    pdf_bytes = uploaded_file.read()
+
+    # First try direct PDF text extraction
+    try:
+        pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+        text = ""
+
+        for page in pdf:
+            text += page.get_text()
+
+        if len(text.strip()) > 200:
+            return text
+
+    except Exception:
+        pass
+
+    # Fallback OCR
+    images = convert_from_bytes(pdf_bytes, dpi=300)
 
     text = ""
 
@@ -22,138 +37,115 @@ def extract_po_data(uploaded_file):
         text += "\n"
         text += pytesseract.image_to_string(img)
 
-    # Debug OCR text
-    with st.expander(f"OCR Text - {uploaded_file.name}"):
-        st.text(text[:15000])
+    return text
 
-    # --------------------------------------------------
-    # Vendor
-    # --------------------------------------------------
 
-    vendor = ""
+def extract_vendor(text):
 
-    vendor_patterns = [
+    patterns = [
         r"M/s\.?\s*([^\n\r]+)",
         r"M\/s\.?\s*([^\n\r]+)"
     ]
 
-    for pattern in vendor_patterns:
+    for pattern in patterns:
 
-        match = re.search(
+        m = re.search(pattern, text, re.IGNORECASE)
+
+        if m:
+
+            vendor = clean_text(m.group(1))
+
+            vendor = vendor.replace("PO NUMBER", "")
+            vendor = vendor.replace("PO NO", "")
+
+            return vendor.strip(" ,:-")
+
+    return ""
+
+
+def extract_description(text):
+
+    patterns = [
+
+        r"PURCHASE\s+ORDER\s+FOR\s+(.*?)\s+TO\s+GOLDFINCH",
+
+        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+AT\s+GOLDFINCH",
+
+        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+TO\s+GOLDFINCH",
+
+        r"SUB:\s*(.*?)\s+TO\s+GOLDFINCH"
+    ]
+
+    for pattern in patterns:
+
+        m = re.search(
+            pattern,
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
+
+        if m:
+            return clean_text(m.group(1))
+
+    return ""
+
+
+def extract_amount(text):
+
+    # Case 1
+    patterns = [
+
+        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+)",
+
+        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+)",
+
+        r"SUBTOTAL\s*[:\-]?\s*([\d,]+)"
+    ]
+
+    for pattern in patterns:
+
+        m = re.search(
             pattern,
             text,
             re.IGNORECASE
         )
 
-        if match:
-            vendor = clean_text(match.group(1))
-            break
+        if m:
+            return m.group(1)
 
-    # --------------------------------------------------
-    # Description
-    # --------------------------------------------------
+    # Case 2
+    lines = text.splitlines()
 
-    description = ""
+    for i, line in enumerate(lines):
 
-    description_patterns = [
+        if "GST" in line.upper():
 
-        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+AT\s+GOLDFINCH",
+            for j in range(i - 1, max(-1, i - 8), -1):
 
-        r"PURCHASE\s+ORDER\s+FOR\s+(.*?)\s+AT\s+GOLDFINCH",
+                nums = re.findall(
+                    r"\d[\d,]*",
+                    lines[j]
+                )
 
-        r"WORK\s+ORDER\s+FOR\s+(.*?)\s+\(",
+                if nums:
+                    return nums[-1]
 
-        r"PURCHASE\s+ORDER\s+FOR\s+(.*?)\s+\(",
+    return ""
 
-        r"SUB:\s*(.*?)\s+AT\s+GOLDFINCH"
-    ]
 
-    for pattern in description_patterns:
+def extract_po_data(uploaded_file):
 
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE | re.DOTALL
-        )
+    text = extract_text_from_pdf(uploaded_file)
 
-        if match:
+    with st.expander(f"OCR/Text Output - {uploaded_file.name}"):
 
-            description = clean_text(
-                match.group(1)
-            )
+        st.text(text[:10000])
 
-            break
+    vendor = extract_vendor(text)
 
-    # --------------------------------------------------
-    # Amount Excluding GST
-    # --------------------------------------------------
+    description = extract_description(text)
 
-    amount = ""
-
-    amount_patterns = [
-
-        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+\.\d{2})",
-
-        r"TOTAL\s*\(EXCLUDING\s*GST\)\s*[:\-]?\s*([\d,]+)",
-
-        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+\.\d{2})",
-
-        r"SUB\s*TOTAL\s*[:\-]?\s*([\d,]+)",
-
-        r"TOTAL\s*[:\-]?\s*([\d,]+\.\d{2}).{0,100}GST",
-
-        r"TOTAL\s*[:\-]?\s*([\d,]+).{0,100}GST"
-    ]
-
-    for pattern in amount_patterns:
-
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE | re.DOTALL
-        )
-
-        if match:
-
-            amount = match.group(1)
-            break
-
-    # --------------------------------------------------
-    # Fallback Amount
-    # --------------------------------------------------
-
-    if amount == "":
-
-        lines = text.splitlines()
-
-        for i, line in enumerate(lines):
-
-            if "GST" in line.upper():
-
-                for j in range(max(0, i - 5), i):
-
-                    nums = re.findall(
-                        r"[\d,]+\.\d{2}|[\d,]+",
-                        lines[j]
-                    )
-
-                    if nums:
-
-                        amount = nums[-1]
-                        break
-
-                if amount:
-                    break
-
-    # --------------------------------------------------
-    # Clean Amount
-    # --------------------------------------------------
-
-    amount = amount.replace(" ", "")
-
-    # --------------------------------------------------
-    # Return
-    # --------------------------------------------------
+    amount = extract_amount(text)
 
     return {
         "Material Vendor": vendor,
